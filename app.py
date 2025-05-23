@@ -13,13 +13,18 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'gudang_secret_key')  # Use environment variable for secret key
 
 def get_connection():
-    return mysql.connector.connect(
-        host=os.getenv('MYSQLHOST'),  # Jangan hardcode!
-        user=os.getenv('MYSQLUSER'),
-        password=os.getenv('MYSQLPASSWORD'),
-        database=os.getenv('MYSQLDATABASE'),
-        port=int(os.getenv('MYSQLPORT', '3306'))
-    )
+    try:
+        conn = mysql.connector.connect(
+            host=os.getenv('MYSQLHOST'),  # No default fallback!
+            user=os.getenv('MYSQLUSER'),
+            password=os.getenv('MYSQLPASSWORD'),
+            database=os.getenv('MYSQLDATABASE'),
+            port=int(os.getenv('MYSQLPORT', '3306')))
+        print("Database connected successfully")
+        return conn
+    except Exception as e:
+        print(f"Database connection failed: {str(e)}")
+        raise  # Re-raise the error to see it in logs
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
