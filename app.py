@@ -44,6 +44,24 @@ def debug_env():
         'PORT': os.getenv('PORT')
     }
 
+@app.route('/init-db')
+def init_db():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                role VARCHAR(20) NOT NULL DEFAULT 'user'
+            )
+        """)
+        conn.commit()
+        return "Tabel berhasil dibuat!"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
