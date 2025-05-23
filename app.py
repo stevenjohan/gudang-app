@@ -14,10 +14,10 @@ app.secret_key = os.getenv('SECRET_KEY', 'gudang_secret_key')  # Use environment
 
 def get_connection():
     return mysql.connector.connect(
-        host=os.getenv('MYSQLHOST', 'mysql.railway.internal'),
-        user=os.getenv('MYSQLUSER', 'root'),
-        password=os.getenv('MYSQLPASSWORD', 'QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
-        database=os.getenv('MYSQLDATABASE', 'railway'),
+        host=os.getenv('MYSQLHOST'),  # Jangan hardcode!
+        user=os.getenv('MYSQLUSER'),
+        password=os.getenv('MYSQLPASSWORD'),
+        database=os.getenv('MYSQLDATABASE'),
         port=int(os.getenv('MYSQLPORT', '3306'))
     )
 
@@ -161,4 +161,5 @@ def lihat_gudang(nama_gudang):
     return render_template('gudang.html', gudang=nama_gudang, barang_list=barang_list)
 
 if __name__ == '__main__':
-    app.run(debug=os.getenv('FLASK_DEBUG', 'False') == 'True')
+    port = int(os.getenv('PORT', 5000))  # Gunakan PORT dari Railway
+    app.run(host='0.0.0.0', port=port)
