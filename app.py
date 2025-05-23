@@ -11,30 +11,26 @@ app = Flask(__name__, template_folder='templates')
 app.secret_key = os.environ['SECRET_KEY']
 
 def get_connection():
-    """Handle both Railway's MYSQL_URL and separate connection variables"""
+    # Force use of Railway's database URL (no fallback to localhost)
+    db_url = os.getenv('DATABASE_URL') or os.getenv('MYSQL_URL')
+    
+    if not db_url:
+        raise ValueError("No database connection URL found in environment variables")
+        
     try:
-        # Option 1: Using Railway's MYSQL_URL
-        if os.getenv('MYSQL_URL'):
-            db_url = urllib.parse.urlparse(os.getenv('MYSQL_URL'))
-            conn = mysql.connector.connect(
-                host=db_url.hostname,
-                user=db_url.username,
-                password=db_url.password,
-                database=db_url.path[1:],  # Remove leading slash
-                port=db_url.port or 3306
-            )
-        # Option 2: Using separate variables
-        else:
-            conn = mysql.connector.connect(
-                host=os.getenv('MYSQLHOST'),
-                user=os.getenv('MYSQLUSER'),
-                password=os.getenv('MYSQLPASSWORD'),
-                database=os.getenv('MYSQLDATABASE'),
-                port=int(os.getenv('MYSQLPORT', '3306'))
-            )
+        # Parse the database URL
+        parsed = urllib.parse.urlparse(db_url)
+        conn = mysql.connector.connect(
+            host=parsed.hostname,
+            user=parsed.username,
+            password=parsed.password,
+            database=parsed.path[1:],  # Remove leading slash
+            port=parsed.port or 3306
+        )
+        print("✅ Successfully connected to Railway MySQL")
         return conn
     except Exception as e:
-        print(f"Database connection error: {str(e)}")
+        print(f"❌ Database connection failed to {parsed.hostname}: {str(e)}")
         raise
 
 @app.route('/debug-env')
