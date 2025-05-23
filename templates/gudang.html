@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Gudang {{ gudang }}</title>
+</head>
+<body>
+    <h1>Daftar Barang di {{ gudang }}</h1>
+    <table border="1">
+        <tr>
+            <th>Nama Barang</th>
+            <th>Stok</th>
+        </tr>
+        {% for barang, stok in barang_list %}
+        <tr>
+            <td>{{ barang }}</td>
+            <td>{{ stok }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <br>
+    <a href="/">Kembali ke Beranda</a>
+</body>
+</html>

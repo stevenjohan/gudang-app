@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cari Barang</title>
+</head>
+<body>
+    <h1>Cari Barang di Gudang</h1>
+    <a href="/">Kembali</a>
+    <hr>
+
+    <form method="POST" action="/cari">
+        <label>Nama Barang:</label><br>
+        <input type="text" name="barang" required><br><br>
+        <input type="submit" value="Cari">
+    </form>
+
+    {% if hasil %}
+        <h3>Hasil Pencarian: "{{ barang }}"</h3>
+        <table border="1">
+    <tr>
+        <th>Gudang</th>
+        <th>Jumlah</th>
+        <th>Tanggal Masuk</th>
+    </tr>
+    {% for row in hasil %}
+    <tr>
+        <td>Gudang {{ row[0] }}</td>
+        <td>{{ row[1] }}</td>
+        <td>{{ row[2] }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+    {% elif barang %}
+        <p>Tidak ditemukan stok tersedia untuk barang "{{ barang }}"</p>
+    {% endif %}
+</body>
+</html>

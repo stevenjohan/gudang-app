@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manajemen Gudang</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background-color: #f4f6f8;
+            color: #333;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        a {
+            margin-right: 15px;
+            color: #0056b3;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        form {
+            background-color: #fff;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            max-width: 500px;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        button, input[type="submit"] {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background-color: #28a745;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover,
+        input[type="submit"]:hover {
+            background-color: #218838;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #ccc;
+            text-align: left;
+        }
+
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .error {
+            color: red;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Selamat Datang di Sistem Gudang</h1>
+        <nav>
+            <a href="/logout">Logout</a> |
+            <a href="/export">Export Excel</a> |
+            <a href="/cari">Cari Barang</a>
+        </nav>
+        <hr>
+
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST">
+            <label for="barang">Barang:</label>
+            <input type="text" name="barang" id="barang" required>
+
+            <label for="jumlah">Jumlah:</label>
+            <input type="number" name="jumlah" id="jumlah" required>
+
+            <label for="tipe">Tipe:</label>
+            <select name="tipe" id="tipe" onchange="toggleGudang()">
+                <option value="masuk">Masuk</option>
+                <option value="keluar">Keluar</option>
+            </select>
+
+            <div id="gudangDiv">
+                <label for="gudang">Gudang:</label>
+                <select name="gudang" id="gudang">
+                    <option value="1">Gudang 1</option>
+                    <option value="2">Gudang 2</option>
+                    <option value="3">Gudang 3</option>
+                    <option value="4">Gudang 4</option>
+                </select>
+            </div>
+
+            <input type="submit" value="Simpan">
+        </form>
+
+        <hr>
+        <h2>Riwayat Transaksi</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tanggal</th>
+                    <th>Barang</th>
+                    <th>Jumlah</th>
+                    <th>Tipe</th>
+                    <th>Gudang</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data %}
+                <tr>
+                    <td>{{ row[0] }}</td>
+                    <td>{{ row[1] }}</td>
+                    <td>{{ row[2] }}</td>
+                    <td>{{ row[3] }}</td>
+                    <td>{{ row[4] }}</td>
+                    <td>{{ row[5] }}</td>
+                    <td>{{ row[6] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function toggleGudang() {
+            var tipe = document.getElementById("tipe").value;
+            var gudangDiv = document.getElementById("gudangDiv");
+            gudangDiv.style.display = (tipe === "masuk") ? "block" : "none";
+        }
+        window.onload = toggleGudang;
+    </script>
+</body>
+</html>
