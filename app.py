@@ -10,16 +10,39 @@ app.secret_key = os.environ.get('SECRET_KEY', 'gudang_secret_key')
 
 def get_connection():
     print("Trying to connect to database...")
-    return mysql.connector.connect(
-        host=os.environ.get('mysql.railway.internal'),
-        port=int(os.environ.get('3306')),
-        user=os.environ.get('root'),
-        password=os.environ.get('QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
-        database=os.environ.get('railway')
-    )
+    
+    # Debug: Print available environment variables
+    print(f"MYSQLHOST: {os.environ.get('mysql.railway.internal')}")
+    print(f"MYSQLPORT: {os.environ.get('3306')}")
+    print(f"MYSQLUSER: {os.environ.get('root')}")
+    print(f"MYSQLDATABASE: {os.environ.get('railway')}")
+    
+    # Check if Railway MySQL variables exist
+    if os.environ.get('MYSQLHOST'):
+        return mysql.connector.connect(
+            host=os.environ.get('mysql.railway.internal'),
+            port=int(os.environ.get('3306', '3306')),
+            user=os.environ.get('root'),
+            password=os.environ.get('QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
+            database=os.environ.get('railway')
+        )
+    
+    # Fallback to old format or local development
+    else:
+        print("Railway MySQL variables not found, trying fallback...")
+        return mysql.connector.connect(
+            host=os.environ.get('DB_HOST', 'localhost'),
+            port=int(os.environ.get('DB_PORT', '3306')),
+            user=os.environ.get('DB_USER', 'root'),
+            password=os.environ.get('DB_PASSWORD', ''),
+            database=os.environ.get('DB_NAME', 'railway')
+        )
 
 def init_database():
     """Initialize database tables if they don't exist"""
+    conn = None
+    cursor = None
+    
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -61,9 +84,13 @@ def init_database():
         
     except Exception as e:
         print(f"❌ Database initialization error: {e}")
+        print("Skipping database initialization - will try again on first request")
+        
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
