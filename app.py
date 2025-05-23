@@ -2,29 +2,51 @@ from flask import Flask, render_template, request, redirect, session, send_file
 import mysql.connector
 import pandas as pd
 import io
-from datetime import datetime
 import os
-from dotenv import load_dotenv  # Add this import
+import urllib.parse
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# Load environment variables
-load_dotenv()
-
-app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'gudang_secret_key')  # Use environment variable for secret key
+app = Flask(__name__, template_folder='templates')
+app.secret_key = os.environ['SECRET_KEY']
 
 def get_connection():
+    """Handle both Railway's MYSQL_URL and separate connection variables"""
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv('MYSQLHOST'),  # No default fallback!
-            user=os.getenv('MYSQLUSER'),
-            password=os.getenv('MYSQLPASSWORD'),
-            database=os.getenv('MYSQLDATABASE'),
-            port=int(os.getenv('MYSQLPORT', '3306')))
-        print("Database connected successfully")
+        # Option 1: Using Railway's MYSQL_URL
+        if os.getenv('MYSQL_URL'):
+            db_url = urllib.parse.urlparse(os.getenv('MYSQL_URL'))
+            conn = mysql.connector.connect(
+                host=db_url.hostname,
+                user=db_url.username,
+                password=db_url.password,
+                database=db_url.path[1:],  # Remove leading slash
+                port=db_url.port or 3306
+            )
+        # Option 2: Using separate variables
+        else:
+            conn = mysql.connector.connect(
+                host=os.getenv('MYSQLHOST'),
+                user=os.getenv('MYSQLUSER'),
+                password=os.getenv('MYSQLPASSWORD'),
+                database=os.getenv('MYSQLDATABASE'),
+                port=int(os.getenv('MYSQLPORT', '3306'))
+            )
         return conn
     except Exception as e:
-        print(f"Database connection failed: {str(e)}")
-        raise  # Re-raise the error to see it in logs
+        print(f"Database connection error: {str(e)}")
+        raise
+
+@app.route('/debug-env')
+def debug_env():
+    """Route to check environment variables (remove in production)"""
+    return {
+        'MYSQL_URL': bool(os.getenv('MYSQL_URL')),
+        'MYSQLHOST': os.getenv('MYSQLHOST'),
+        'MYSQLUSER': os.getenv('MYSQLUSER'),
+        'MYSQLDATABASE': os.getenv('MYSQLDATABASE'),
+        'PORT': os.getenv('PORT')
+    }
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -32,18 +54,24 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
-        conn = get_connection()
-        c = conn.cursor()
-        c.execute("SELECT username, role FROM user WHERE username=%s AND password=%s", (username, password))
-        user = c.fetchone()
-        conn.close()
+        try:
+            conn = get_connection()
+            c = conn.cursor(dictionary=True)
+            
+            c.execute("SELECT username, password, role FROM user WHERE username = %s", (username,))
+            user = c.fetchone()
+            conn.close()
 
-        if user:
-            session['username'] = user[0]
-            session['role'] = user[1]
-            return redirect('/')
-        else:
-            return render_template('login.html', error="Username atau password salah.")
+            if user and check_password_hash(user['password'], password):
+                session['username'] = user['username']
+                session['role'] = user['role']
+                return redirect('/')
+            return render_template('login.html', error="Invalid credentials")
+                
+        except Exception as e:
+            print(f"Login error: {str(e)}")
+            return render_template('login.html', error="Database error occurred")
+
     return render_template('login.html')
 
 @app.route('/logout')
@@ -166,5 +194,5 @@ def lihat_gudang(nama_gudang):
     return render_template('gudang.html', gudang=nama_gudang, barang_list=barang_list)
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))  # Gunakan PORT dari Railway
+    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
