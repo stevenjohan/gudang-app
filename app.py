@@ -11,11 +11,59 @@ app.secret_key = os.environ.get('SECRET_KEY', 'gudang_secret_key')
 def get_connection():
     print("Trying to connect to database...")
     return mysql.connector.connect(
-        host=os.environ.get('DB_HOST', 'mysql.railway.internal'),
-        user=os.environ.get('DB_USER', 'root'),
-        password=os.environ.get('DB_PASSWORD', 'QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
-        database=os.environ.get('DB_NAME', 'railway')
+        host=os.environ.get('mysql.railway.internal'),
+        port=int(os.environ.get('3306')),
+        user=os.environ.get('root'),
+        password=os.environ.get('QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
+        database=os.environ.get('railway')
     )
+
+def init_database():
+    """Initialize database tables if they don't exist"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Create user table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                role VARCHAR(20) DEFAULT 'user',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create transaksi table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transaksi (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                tanggal DATETIME NOT NULL,
+                barang VARCHAR(100) NOT NULL,
+                jumlah INT NOT NULL,
+                tipe ENUM('masuk', 'keluar') NOT NULL,
+                gudang INT NOT NULL,
+                status VARCHAR(20) DEFAULT 'tersedia',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Insert default users
+        cursor.execute("""
+            INSERT IGNORE INTO user (username, password, role) VALUES 
+            ('admin', 'admin123', 'admin'),
+            ('user', 'user123', 'user')
+        """)
+        
+        conn.commit()
+        print("✅ Database initialized successfully!")
+        
+    except Exception as e:
+        print(f"❌ Database initialization error: {e}")
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -23,18 +71,22 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
-        conn = get_connection()
-        c = conn.cursor()
-        c.execute("SELECT username, role FROM user WHERE username=%s AND password=%s", (username, password))
-        user = c.fetchone()
-        conn.close()
+        try:
+            conn = get_connection()
+            c = conn.cursor()
+            c.execute("SELECT username, role FROM user WHERE username=%s AND password=%s", (username, password))
+            user = c.fetchone()
+            conn.close()
 
-        if user:
-            session['username'] = user[0]
-            session['role'] = user[1]
-            return redirect('/')
-        else:
-            return render_template('login.html', error="Username atau password salah.")
+            if user:
+                session['username'] = user[0]
+                session['role'] = user[1]
+                return redirect('/')
+            else:
+                return render_template('login.html', error="Username atau password salah.")
+        except Exception as e:
+            return f"Database error: {e}"
+            
     return render_template('login.html')
 
 @app.route('/logout')
@@ -155,5 +207,7 @@ def lihat_gudang(nama_gudang):
     return render_template('gudang.html', gudang=nama_gudang, barang_list=barang_list)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # default 5000 untuk lokal
+    # Initialize database on startup
+    init_database()
+    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
