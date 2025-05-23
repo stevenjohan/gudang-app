@@ -11,10 +11,10 @@ app.secret_key = os.environ.get('SECRET_KEY', 'gudang_secret_key')
 def get_connection():
     print("Trying to connect to database...")
     return mysql.connector.connect(
-        host=os.environ.get('DB_HOST', 'localhost'),
+        host=os.environ.get('DB_HOST', 'mysql.railway.internal'),
         user=os.environ.get('DB_USER', 'root'),
-        password=os.environ.get('DB_PASSWORD', ''),
-        database=os.environ.get('DB_NAME', 'gudang_db')
+        password=os.environ.get('DB_PASSWORD', 'QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
+        database=os.environ.get('DB_NAME', 'railway')
     )
 
 @app.route('/login', methods=['GET', 'POST'])
