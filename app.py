@@ -3,16 +3,17 @@ import mysql.connector
 import pandas as pd
 import io
 from datetime import datetime
+import os
 
 app = Flask(__name__)
-app.secret_key = 'gudang_secret_key'
+app.secret_key = os.environ.get('SECRET_KEY', 'gudang_secret_key')
 
 def get_connection():
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="",  # Ganti jika password MySQL-mu tidak kosong
-        database="gudang_db"
+        host=os.environ.get('DB_HOST', 'localhost'),
+        user=os.environ.get('DB_USER', 'root'),
+        password=os.environ.get('DB_PASSWORD', ''),
+        database=os.environ.get('DB_NAME', 'gudang_db')
     )
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -44,9 +45,6 @@ def logout():
 def index():
     if 'username' not in session:
         return redirect('/login')
-    
-    print('ROLE SAAT INI:', session.get('role'))
-
 
     conn = get_connection()
     c = conn.cursor()
@@ -95,13 +93,12 @@ def index():
 
         conn.commit()
         conn.close()
-        return redirect('/')  # Tambahkan redirect di sini
+        return redirect('/')
 
     c.execute("SELECT * FROM transaksi ORDER BY id DESC")
     data = c.fetchall()
     conn.close()
     return render_template('index.html', data=data, error=error)
-
 
 @app.route('/cari', methods=['GET', 'POST'])
 def cari():
@@ -157,4 +154,5 @@ def lihat_gudang(nama_gudang):
     return render_template('gudang.html', gudang=nama_gudang, barang_list=barang_list)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))  # default 5000 untuk lokal
+    app.run(host='0.0.0.0', port=port)
