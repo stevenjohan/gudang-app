@@ -9,6 +9,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'gudang_secret_key')
 
 def get_connection():
+    print("Trying to connect to database...")
     return mysql.connector.connect(
         host=os.environ.get('DB_HOST', 'localhost'),
         user=os.environ.get('DB_USER', 'root'),
