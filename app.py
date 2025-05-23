@@ -4,93 +4,22 @@ import pandas as pd
 import io
 from datetime import datetime
 import os
+from dotenv import load_dotenv  # Add this import
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'gudang_secret_key')
+app.secret_key = os.getenv('SECRET_KEY', 'gudang_secret_key')  # Use environment variable for secret key
 
 def get_connection():
-    print("Trying to connect to database...")
-    
-    # Debug: Print available environment variables
-    print(f"MYSQLHOST: {os.environ.get('mysql.railway.internal')}")
-    print(f"MYSQLPORT: {os.environ.get('3306')}")
-    print(f"MYSQLUSER: {os.environ.get('root')}")
-    print(f"MYSQLDATABASE: {os.environ.get('railway')}")
-    
-    # Check if Railway MySQL variables exist
-    if os.environ.get('MYSQLHOST'):
-        return mysql.connector.connect(
-            host=os.environ.get('mysql.railway.internal'),
-            port=int(os.environ.get('3306', '3306')),
-            user=os.environ.get('root'),
-            password=os.environ.get('QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
-            database=os.environ.get('railway')
-        )
-    
-    # Fallback to old format or local development
-    else:
-        print("Railway MySQL variables not found, trying fallback...")
-        return mysql.connector.connect(
-            host=os.environ.get('DB_HOST', 'localhost'),
-            port=int(os.environ.get('DB_PORT', '3306')),
-            user=os.environ.get('DB_USER', 'root'),
-            password=os.environ.get('DB_PASSWORD', ''),
-            database=os.environ.get('DB_NAME', 'railway')
-        )
-
-def init_database():
-    """Initialize database tables if they don't exist"""
-    conn = None
-    cursor = None
-    
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        
-        # Create user table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                role VARCHAR(20) DEFAULT 'user',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create transaksi table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS transaksi (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                tanggal DATETIME NOT NULL,
-                barang VARCHAR(100) NOT NULL,
-                jumlah INT NOT NULL,
-                tipe ENUM('masuk', 'keluar') NOT NULL,
-                gudang INT NOT NULL,
-                status VARCHAR(20) DEFAULT 'tersedia',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Insert default users
-        cursor.execute("""
-            INSERT IGNORE INTO user (username, password, role) VALUES 
-            ('admin', 'admin123', 'admin'),
-            ('user', 'user123', 'user')
-        """)
-        
-        conn.commit()
-        print("✅ Database initialized successfully!")
-        
-    except Exception as e:
-        print(f"❌ Database initialization error: {e}")
-        print("Skipping database initialization - will try again on first request")
-        
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+    return mysql.connector.connect(
+        host=os.getenv('MYSQLHOST', 'mysql.railway.internal'),
+        user=os.getenv('MYSQLUSER', 'root'),
+        password=os.getenv('MYSQLPASSWORD', 'QALkfRgKFSekNYqRixIeDTxxcVgUdKut'),
+        database=os.getenv('MYSQLDATABASE', 'railway'),
+        port=int(os.getenv('MYSQLPORT', '3306'))
+    )
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -98,22 +27,18 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
-        try:
-            conn = get_connection()
-            c = conn.cursor()
-            c.execute("SELECT username, role FROM user WHERE username=%s AND password=%s", (username, password))
-            user = c.fetchone()
-            conn.close()
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT username, role FROM user WHERE username=%s AND password=%s", (username, password))
+        user = c.fetchone()
+        conn.close()
 
-            if user:
-                session['username'] = user[0]
-                session['role'] = user[1]
-                return redirect('/')
-            else:
-                return render_template('login.html', error="Username atau password salah.")
-        except Exception as e:
-            return f"Database error: {e}"
-            
+        if user:
+            session['username'] = user[0]
+            session['role'] = user[1]
+            return redirect('/')
+        else:
+            return render_template('login.html', error="Username atau password salah.")
     return render_template('login.html')
 
 @app.route('/logout')
@@ -125,6 +50,8 @@ def logout():
 def index():
     if 'username' not in session:
         return redirect('/login')
+    
+    print('ROLE SAAT INI:', session.get('role'))
 
     conn = get_connection()
     c = conn.cursor()
@@ -234,7 +161,4 @@ def lihat_gudang(nama_gudang):
     return render_template('gudang.html', gudang=nama_gudang, barang_list=barang_list)
 
 if __name__ == '__main__':
-    # Initialize database on startup
-    init_database()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=os.getenv('FLASK_DEBUG', 'False') == 'True')
