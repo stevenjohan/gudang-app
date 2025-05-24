@@ -49,6 +49,7 @@ def init_db():
     try:
         conn = get_connection()
         cursor = conn.cursor()
+        
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -57,8 +58,14 @@ def init_db():
                 role VARCHAR(20) NOT NULL DEFAULT 'user'
             )
         """)
+        
+        cursor.execute("""
+            INSERT IGNORE INTO user (username, password, role)
+            VALUES ('admin', '$2b$12$WU8UfJoJwN5p0bBzQhLJQOcJ9XZ9xkT7r9VlDd6hL0aNf2sKjQWYm', 'admin')
+        """)
+        
         conn.commit()
-        return "Tabel berhasil dibuat!"
+        return "Database initialized successfully!"
     except Exception as e:
         return f"Error: {str(e)}"
 
