@@ -1,255 +1,267 @@
-import os
-from datetime import datetime
-from flask import Flask, render_template, request, redirect, session, send_file, flash
-from mysql.connector import pooling
+from flask import Flask, render_template, request, redirect, session, send_file
+import mysql.connector
 import pandas as pd
 import io
+import os
+from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_caching import Cache
 
-# =============================================
-# INITIALIZATION
-# =============================================
 app = Flask(__name__, template_folder='templates')
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-please-change')
+app.secret_key = os.environ.get('SECRET_KEY', 'fallback-secret-key')
 
-# Cache Configuration
-cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
-cache.init_app(app)
-
-# Database Pool Configuration
-db_config = {
-    "host": os.environ.get('MYSQLHOST', 'mysql.railway.internal'),
-    "user": os.environ.get('MYSQLUSER', 'root'),
-    "password": os.environ.get('MYSQLPASSWORD'),
-    "database": os.environ.get('MYSQLDATABASE', 'railway'),
-    "port": int(os.environ.get('MYSQLPORT', 3306)),
-    "pool_name": "gudang_pool",
-    "pool_size": 5,
-    "autocommit": True
-}
-
-try:
-    connection_pool = pooling.MySQLConnectionPool(**db_config)
-    print("✅ Database connection pool created successfully")
-except Exception as e:
-    print(f"❌ Failed to create connection pool: {str(e)}")
-    raise
-
-# =============================================
-# HELPER FUNCTIONS
-# =============================================
 def get_connection():
-    """Get database connection from pool"""
-    return connection_pool.get_connection()
-
-def execute_query(query, params=None, fetch_one=False):
-    """Execute SQL query with proper connection handling"""
-    conn = None
-    cursor = None
+    """Get database connection using Railway environment variables"""
     try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(query, params or ())
-        
-        if fetch_one:
-            return cursor.fetchone()
-        return cursor.fetchall()
-        
+        # Use Railway MySQL environment variables
+        conn = mysql.connector.connect(
+            host=os.environ.get('MYSQLHOST'),
+            user=os.environ.get('MYSQLUSER'),
+            password=os.environ.get('MYSQLPASSWORD'),
+            database=os.environ.get('MYSQLDATABASE'),
+            port=int(os.environ.get('MYSQLPORT', 3306))
+        )
+        print("✅ Successfully connected to Railway MySQL")
+        return conn
     except Exception as e:
-        print(f"Database error: {str(e)}")
+        print(f"❌ Database connection failed: {str(e)}")
+        # Print debug info
+        print(f"Host: {os.environ.get('MYSQLHOST')}")
+        print(f"User: {os.environ.get('MYSQLUSER')}")  
+        print(f"Database: {os.environ.get('MYSQLDATABASE')}")
+        print(f"Port: {os.environ.get('MYSQLPORT')}")
         raise
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
-# =============================================
-# ROUTES
-# =============================================
+@app.route('/debug-env')
+def debug_env():
+    """Route to check environment variables (remove in production)"""
+    return {
+        'MYSQLHOST': os.getenv('MYSQLHOST'),
+        'MYSQLUSER': os.getenv('MYSQLUSER'),
+        'MYSQLDATABASE': os.getenv('MYSQLDATABASE'),
+        'MYSQLPORT': os.getenv('MYSQLPORT'),
+        'SECRET_KEY': bool(os.getenv('SECRET_KEY')),
+        'PORT': os.getenv('PORT')
+    }
+
 @app.route('/init-db')
 def init_db():
-    """Initialize database structure"""
+    """Initialize database tables and create admin user"""
     try:
-        # Create tables
-        execute_query("""
-            CREATE TABLE IF NOT EXISTS users (
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Create user table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 username VARCHAR(50) UNIQUE NOT NULL,
                 password VARCHAR(255) NOT NULL,
-                role ENUM('admin', 'user') DEFAULT 'user',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                role VARCHAR(20) NOT NULL DEFAULT 'user'
             )
         """)
         
-        execute_query("""
-            CREATE TABLE IF NOT EXISTS transactions (
+        # Create transaksi table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transaksi (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 tanggal DATETIME NOT NULL,
                 barang VARCHAR(100) NOT NULL,
                 jumlah INT NOT NULL,
                 tipe ENUM('masuk', 'keluar') NOT NULL,
-                gudang VARCHAR(50) NOT NULL,
-                status ENUM('tersedia', 'keluar') DEFAULT 'tersedia',
-                user_id INT,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                INDEX idx_barang (barang),
-                INDEX idx_tipe_status (tipe, status),
-                INDEX idx_gudang (gudang),
-                INDEX idx_tanggal (tanggal)
+                gudang INT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'tersedia'
             )
         """)
         
-        # Create admin user if not exists
-        admin_exists = execute_query(
-            "SELECT 1 FROM users WHERE username = 'admin'", 
-            fetch_one=True
-        )
+        # Create admin user with hashed password
+        admin_password = generate_password_hash('admin')  # Change this password!
         
-        if not admin_exists:
-            hashed_pw = generate_password_hash('admin123')
-            execute_query(
-                "INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
-                ('admin', hashed_pw, 'admin')
-            )
+        cursor.execute("""
+            INSERT IGNORE INTO user (username, password, role)
+            VALUES ('admin', %s, 'admin')
+        """, (admin_password,))
         
-        return "Database initialized successfully! Admin user: admin / admin123"
-    
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return "Database initialized successfully! Admin user created with password 'admin'"
     except Exception as e:
-        return f"Initialization failed: {str(e)}"
+        return f"Error initializing database: {str(e)}"
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        
-        user = execute_query(
-            "SELECT id, username, password, role FROM users WHERE username = %s",
-            (username,),
-            fetch_one=True
-        )
-        
-        if user and check_password_hash(user['password'], password):
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['role'] = user['role']
-            flash('Login successful!', 'success')
-            return redirect('/')
-        
-        flash('Invalid username or password', 'danger')
-    
+        username = request.form['username']
+        password = request.form['password']
+
+        try:
+            conn = get_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            cursor.execute("SELECT username, password, role FROM user WHERE username = %s", (username,))
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+
+
+            if user and check_password_hash(user['password'], password):
+                session['username'] = user['username']
+                session['role'] = user['role']
+                return redirect('/')
+            return render_template('login.html', error="Invalid credentials")
+                
+        except Exception as e:
+            print(f"Login error: {str(e)}")
+            return render_template('login.html', error="Database connection error")
+
     return render_template('login.html')
 
 @app.route('/logout')
 def logout():
-    session.clear()
-    flash('You have been logged out', 'info')
+    session.pop('username', None)
+    session.pop('role', None)
     return redirect('/login')
 
-@app.route('/')
-@cache.cached(timeout=30)
-def dashboard():
-    if 'user_id' not in session:
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if 'username' not in session:
         return redirect('/login')
     
-    # Pagination
-    page = request.args.get('page', 1, type=int)
-    per_page = 20
-    offset = (page - 1) * per_page
-    
-    transactions = execute_query(
-        "SELECT * FROM transactions ORDER BY tanggal DESC LIMIT %s OFFSET %s",
-        (per_page, offset)
-    )
-    
-    total_items = execute_query(
-        "SELECT COUNT(*) as count FROM transactions",
-        fetch_one=True
-    )['count']
-    
-    return render_template(
-        'dashboard.html',
-        transactions=transactions,
-        page=page,
-        per_page=per_page,
-        total_items=total_items
-    )
+    print('ROLE SAAT INI:', session.get('role'))
 
-@app.route('/transaksi/barang-masuk', methods=['POST'])
-def barang_masuk():
-    if 'user_id' not in session or session['role'] != 'admin':
-        flash('Unauthorized access', 'danger')
+    conn = get_connection()
+    cursor = conn.cursor()
+    error = None
+
+    if request.method == 'POST' and session.get('role') != 'admin':
+        error = "Role Anda tidak diizinkan untuk input data."
+    elif request.method == 'POST':
+        tanggal = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        barang = request.form['barang']
+        jumlah = int(request.form['jumlah'])
+        tipe = request.form['tipe']
+
+        if tipe == 'masuk':
+            gudang = int(request.form['gudang'])
+            cursor.execute('''INSERT INTO transaksi (tanggal, barang, jumlah, tipe, gudang, status)
+                         VALUES (%s, %s, %s, %s, %s, %s)''',
+                      (tanggal, barang, jumlah, tipe, gudang, 'tersedia'))
+        else:
+            sisa = jumlah
+            cursor.execute('''SELECT * FROM transaksi 
+                         WHERE barang=%s AND tipe='masuk' AND status='tersedia'
+                         ORDER BY tanggal ASC''', (barang,))
+            stok_tersedia = cursor.fetchall()
+            
+            for stok in stok_tersedia:
+                id_trans, _, _, jumlah_stok, _, gudang_stok, _ = stok
+                if jumlah_stok <= sisa:
+                    cursor.execute("UPDATE transaksi SET status='keluar' WHERE id=%s", (id_trans,))
+                    cursor.execute('''INSERT INTO transaksi (tanggal, barang, jumlah, tipe, gudang, status)
+                                 VALUES (%s, %s, %s, %s, %s, %s)''',
+                              (tanggal, barang, jumlah_stok, 'keluar', gudang_stok, 'keluar'))
+                    sisa -= jumlah_stok
+                else:
+                    cursor.execute("UPDATE transaksi SET jumlah=%s WHERE id=%s", (jumlah_stok - sisa, id_trans))
+                    cursor.execute('''INSERT INTO transaksi (tanggal, barang, jumlah, tipe, gudang, status)
+                                 VALUES (%s, %s, %s, %s, %s, %s)''',
+                              (tanggal, barang, sisa, 'keluar', gudang_stok, 'keluar'))
+                    sisa = 0
+                if sisa == 0:
+                    break
+            
+            if sisa > 0:
+                cursor.execute("SELECT * FROM transaksi ORDER BY id DESC")
+                data = cursor.fetchall()
+                cursor.close()
+                conn.close()
+                return render_template('index.html', data=data, error=f"Stok tidak mencukupi untuk barang: {barang}")
+
+        conn.commit()
+        cursor.close()
+        conn.close()
         return redirect('/')
-    
-    try:
-        execute_query(
-            """
-            INSERT INTO transactions 
-            (tanggal, barang, jumlah, tipe, gudang, user_id)
-            VALUES (%s, %s, %s, 'masuk', %s, %s)
-            """,
-            (
-                datetime.now(),
-                request.form.get('barang'),
-                int(request.form.get('jumlah')),
-                request.form.get('gudang'),
-                session['user_id']
-            )
-        )
-        cache.clear()
-        flash('Item added successfully!', 'success')
-    except Exception as e:
-        flash(f'Error: {str(e)}', 'danger')
-    
-    return redirect('/')
 
-@app.route('/transaksi/barang-keluar', methods=['POST'])
-def barang_keluar():
-    if 'user_id' not in session:
+    cursor.execute("SELECT * FROM transaksi ORDER BY id DESC")
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('index.html', data=data, error=error)
+
+@app.route('/cari', methods=['GET', 'POST'])
+def cari():
+    if 'username' not in session:
         return redirect('/login')
-    
-    # Implement your inventory deduction logic here
-    # ...
-    
-    cache.clear()
-    return redirect('/')
 
-@app.route('/export/excel')
+
+    hasil = []
+    barang = ""
+    if request.method == 'POST':
+        barang = request.form['barang']
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''SELECT gudang, jumlah, tanggal FROM transaksi
+                     WHERE barang=%s AND tipe='masuk' AND status='tersedia'
+                     ORDER BY tanggal ASC''', (barang,))
+        hasil = cursor.fetchall()
+        cursor.close()
+        conn.close()
+    return render_template('cari.html', hasil=hasil, barang=barang)
+
+@app.route('/export')
 def export_excel():
-    if 'user_id' not in session:
+    if 'username' not in session:
         return redirect('/login')
-    
-    data = execute_query("SELECT * FROM transactions ORDER BY tanggal DESC")
-    df = pd.DataFrame(data)
-    
+
+    conn = get_connection()
+    df = pd.read_sql("SELECT * FROM transaksi ORDER BY id DESC", conn)
+    conn.close()
+
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Transactions')
-    
+        df.to_excel(writer, index=False, sheet_name='Riwayat')
+
     output.seek(0)
-    return send_file(
-        output,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        download_name='inventory_report.xlsx',
-        as_attachment=True
-    )
+    return send_file(output, download_name='riwayat_gudang.xlsx', as_attachment=True)
 
-# =============================================
-# ERROR HANDLERS
-# =============================================
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
+@app.route('/gudang/<nama_gudang>')
+def lihat_gudang(nama_gudang):
+    if 'username' not in session:
+        return redirect('/login')
+        
+    conn = get_connection()
+    cursor = conn.cursor()
 
-@app.errorhandler(500)
-def internal_server_error(e):
-    return render_template('500.html'), 500
+    cursor.execute('''
+        SELECT barang, 
+               SUM(CASE WHEN tipe = 'masuk' THEN jumlah ELSE 0 END) -
+               SUM(CASE WHEN tipe = 'keluar' THEN jumlah ELSE 0 END) AS stok
+        FROM transaksi
+        WHERE gudang = %s
+        GROUP BY barang
+        HAVING stok > 0
+    ''', (nama_gudang,))
 
-# =============================================
-# MAIN EXECUTION
-# =============================================
+    barang_list = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template('gudang.html', gudang=nama_gudang, barang_list=barang_list)
+
+@app.route('/test-connection')
+def test_connection():
+    """Test database connection"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return f"✅ Database connection successful! Test query result: {result}"
+    except Exception as e:
+        return f"❌ Database connection failed: {str(e)}"
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get('DEBUG', False))
+    app.run(host='0.0.0.0', port=port, debug=True)
